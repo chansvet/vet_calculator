@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>약물 용량 계산기</title>
@@ -28,8 +28,22 @@
     justify-content: space-between;
     align-items: center;
   }
-  .header-left h1 { font-size: 18px; font-weight: 700; }
+  .header-left h1 { font-size: 19px; font-weight: 700; }
   .header-left p { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .reset-btn {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 8px;
+    height: 36px;
+    padding: 0 12px;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+  }
   .settings-btn {
     background: rgba(255,255,255,0.2);
     border: none;
@@ -51,9 +65,10 @@
     padding: 16px;
     border-radius: 12px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    overflow: hidden;
   }
   .weight-section label {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     color: #4a5568;
     display: block;
@@ -63,10 +78,13 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    width: 100%;
   }
   .weight-input-wrap input {
     flex: 1;
-    font-size: 28px;
+    min-width: 0;
+    width: 0;
+    font-size: 30px;
     font-weight: 700;
     padding: 10px 14px;
     border: 2px solid #e2e8f0;
@@ -78,9 +96,10 @@
   }
   .weight-input-wrap input:focus { border-color: #2b6cb0; }
   .weight-input-wrap span {
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 600;
     color: #718096;
+    flex-shrink: 0;
   }
 
   .search-section {
@@ -159,8 +178,8 @@
   .drug-card.selected .drug-checkbox::after { display: block; }
 
   .drug-name-area { flex: 1; }
-  .drug-name { font-size: 15px; font-weight: 600; color: #2d3748; }
-  .drug-note { font-size: 11px; color: #d69e2e; font-weight: 600; margin-top: 1px; }
+  .drug-name { font-size: 16px; font-weight: 600; color: #2d3748; }
+  .drug-note { font-size: 12px; color: #d69e2e; font-weight: 600; margin-top: 1px; }
   .sc-badge {
     background: #fed7d7; color: #c53030;
     font-size: 10px; font-weight: 700;
@@ -196,10 +215,10 @@
     display: flex; align-items: center; justify-content: space-between;
   }
   .drug-card.sc-drug .result-row { background: #fff5f5; }
-  .result-label { font-size: 13px; color: #4a5568; font-weight: 500; }
-  .result-value { font-size: 22px; font-weight: 800; color: #2b6cb0; }
+  .result-label { font-size: 14px; color: #4a5568; font-weight: 500; }
+  .result-value { font-size: 26px; font-weight: 800; color: #2b6cb0; }
   .drug-card.sc-drug .result-value { color: #c53030; }
-  .result-unit { font-size: 13px; font-weight: 600; color: #718096; margin-left: 4px; }
+  .result-unit { font-size: 14px; font-weight: 600; color: #718096; margin-left: 4px; }
 
   .summary-bar {
     position: fixed; bottom: 0; left: 0; right: 0;
@@ -322,7 +341,10 @@
     <h1>Vet Drug Calculator</h1>
     <p>수의 약물 용량 계산기</p>
   </div>
-  <button class="settings-btn" onclick="openSettings()">&#9881;</button>
+  <div class="header-actions">
+    <button class="reset-btn" onclick="resetAll()">전체 초기화</button>
+    <button class="settings-btn" onclick="openSettings()">&#9881;</button>
+  </div>
 </div>
 
 <div class="weight-section">
@@ -682,6 +704,15 @@ function resetDrugs() {
   initDoses();
   renderSettings();
   renderDrugs(document.getElementById('searchInput').value);
+  updateSummaryBar();
+}
+
+function resetAll() {
+  document.getElementById('weightInput').value = '';
+  document.getElementById('searchInput').value = '';
+  selectedDrugs.clear();
+  initDoses();
+  renderDrugs('');
   updateSummaryBar();
 }
 
