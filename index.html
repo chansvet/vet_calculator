@@ -186,12 +186,33 @@
     padding: 2px 6px; border-radius: 4px; margin-left: 6px;
   }
 
+  .combo-badge {
+    background: #e9d8fd; color: #6b46c1;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 6px; border-radius: 4px; margin-left: 6px;
+  }
+  .drug-card.combo-drug { border-left: 4px solid #805ad5; }
+  .drug-card.combo-drug.selected {
+    border-color: #805ad5;
+    border-left: 4px solid #805ad5;
+  }
+  .drug-card.combo-drug.selected .drug-checkbox { background: #805ad5; border-color: #805ad5; }
+
   .drug-detail {
     display: none;
     padding: 0 14px 14px;
     border-top: 1px solid #f0f0f0;
   }
   .drug-card.selected .drug-detail { display: block; }
+
+  .combo-item { padding-top: 10px; }
+  .combo-item + .combo-item {
+    margin-top: 10px;
+    border-top: 1px dashed #e2e8f0;
+  }
+  .combo-item-name {
+    font-size: 14px; font-weight: 700; color: #4a5568;
+  }
 
   .detail-row {
     display: flex;
@@ -263,11 +284,18 @@
 
   .summary-item { padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
   .summary-item:last-child { border-bottom: none; }
-  .summary-drug-name { font-size: 15px; font-weight: 700; color: #2d3748; margin-bottom: 4px; }
-  .summary-drug-name .sc-badge { vertical-align: middle; }
-  .summary-detail { font-size: 13px; color: #718096; }
-  .summary-dose { font-size: 20px; font-weight: 800; color: #2b6cb0; margin-top: 4px; }
+  .summary-drug-name { font-size: 16px; font-weight: 700; color: #2d3748; margin-bottom: 4px; }
+  .summary-drug-name .sc-badge, .summary-drug-name .combo-badge { vertical-align: middle; }
+  .summary-detail { font-size: 14px; color: #718096; }
+  .summary-dose { font-size: 22px; font-weight: 800; color: #2b6cb0; margin-top: 4px; }
   .summary-item.sc .summary-dose { color: #c53030; }
+  .summary-sub {
+    padding: 8px 0 0 12px;
+    border-left: 2px solid #e9d8fd;
+    margin-top: 8px;
+  }
+  .summary-sub-name { font-size: 14px; font-weight: 600; color: #4a5568; }
+  .summary-sub .summary-dose { font-size: 19px; }
 
   /* Settings Modal */
   .settings-drug-item {
@@ -326,6 +354,29 @@
     width: 100%; padding: 10px; margin-top: 12px;
     background: white; border: 1.5px solid #e2e8f0; border-radius: 8px;
     font-size: 13px; color: #718096; cursor: pointer; font-weight: 500;
+  }
+
+  .combo-form-title {
+    font-size: 12px; font-weight: 700; color: #6b46c1;
+    margin: 10px 0 6px;
+  }
+  .form-item {
+    background: white; border: 1.5px solid #e2e8f0;
+    border-radius: 8px; padding: 10px; margin-bottom: 8px;
+  }
+  .form-item-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .form-item-head input {
+    flex: 1; min-width: 0; padding: 8px 10px;
+    border: 1.5px solid #e2e8f0; border-radius: 8px;
+    font-size: 14px; outline: none;
+  }
+  .form-item .form-row { margin-bottom: 6px; }
+  .form-item .form-row label { width: 46px; font-size: 11px; }
+  .form-item .form-row input { min-width: 0; }
+  .btn-add-item {
+    width: 100%; padding: 9px; border: 1.5px dashed #cbd5e0;
+    border-radius: 8px; background: white; color: #6b46c1;
+    font-size: 13px; font-weight: 600; cursor: pointer;
   }
 
   @media (min-width: 600px) {
@@ -405,7 +456,19 @@ const DEFAULT_DRUGS = [
   { name: "Marbofloxacin (Marbocyl)", dose: 2, conc: 10, sc: false, note: "" },
   { name: "Tramadol", dose: 4, conc: 50, sc: false, note: "" },
   { name: "Tranexamic acid (트라넥삼산)", dose: 10, conc: 100, sc: false, note: "" },
+  { name: "Dalteparin", dose: 150, conc: 2500, sc: true, note: "단위는 mg가 아닌 IU" },
+  {
+    name: "항암·수혈 전처치", combo: true, note: "항암 / 수혈 전 투여",
+    items: [
+      { name: "Chlorpheniramine", dose: 0.2, conc: 2, sc: false },
+      { name: "Maropitant", dose: 1, conc: 10, sc: false },
+    ],
+  },
 ];
+
+// DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
+// 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
+const DEFAULTS_VERSION = 2;
 
 let drugs = loadDrugs();
 let selectedDrugs = new Set();
@@ -413,21 +476,45 @@ let drugDoses = {};
 
 function loadDrugs() {
   const saved = localStorage.getItem('vet_drugs');
-  if (saved) {
-    return JSON.parse(saved);
+  if (!saved) {
+    localStorage.setItem('vet_drugs_version', String(DEFAULTS_VERSION));
+    return JSON.parse(JSON.stringify(DEFAULT_DRUGS));
   }
-  return JSON.parse(JSON.stringify(DEFAULT_DRUGS));
+
+  const list = JSON.parse(saved);
+  const savedVersion = parseInt(localStorage.getItem('vet_drugs_version') || '1', 10);
+
+  if (savedVersion < DEFAULTS_VERSION) {
+    const existing = new Set(list.map(d => d.name));
+    DEFAULT_DRUGS.forEach(d => {
+      if (!existing.has(d.name)) list.push(JSON.parse(JSON.stringify(d)));
+    });
+    localStorage.setItem('vet_drugs', JSON.stringify(list));
+    localStorage.setItem('vet_drugs_version', String(DEFAULTS_VERSION));
+  }
+
+  return list;
 }
 
 function saveDrugs() {
   localStorage.setItem('vet_drugs', JSON.stringify(drugs));
+  localStorage.setItem('vet_drugs_version', String(DEFAULTS_VERSION));
 }
 
+// 단일 약물은 숫자, 세트는 구성 약물별 숫자 배열을 담는다.
 function initDoses() {
   drugDoses = {};
-  drugs.forEach((d, i) => { drugDoses[i] = d.dose; });
+  drugs.forEach((d, i) => {
+    drugDoses[i] = d.combo ? d.items.map(it => it.dose) : d.dose;
+  });
 }
 initDoses();
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
 
 function renderDrugs(filter = '') {
   const container = document.getElementById('drugContainer');
@@ -438,49 +525,90 @@ function renderDrugs(filter = '') {
   listEl.className = 'drug-list';
   container.appendChild(listEl);
 
+  const weight = parseFloat(document.getElementById('weightInput').value) || 0;
+
   drugs.forEach((drug, idx) => {
-    if (filter && !drug.name.toLowerCase().includes(lowerFilter)) return;
+    if (filter && !matchesFilter(drug, lowerFilter)) return;
 
     const card = document.createElement('div');
-    card.className = 'drug-card' + (drug.sc ? ' sc-drug' : '') + (selectedDrugs.has(idx) ? ' selected' : '');
+    card.className = 'drug-card'
+      + (drug.combo ? ' combo-drug' : (drug.sc ? ' sc-drug' : ''))
+      + (selectedDrugs.has(idx) ? ' selected' : '');
 
-    const weight = parseFloat(document.getElementById('weightInput').value) || 0;
-    const dose = drugDoses[idx] !== undefined ? drugDoses[idx] : drug.dose;
-    const totalDose = dose * weight;
-    const volume = totalDose / drug.conc;
+    const badge = drug.combo
+      ? '<span class="combo-badge">SET</span>'
+      : (drug.sc ? '<span class="sc-badge">SC</span>' : '');
 
     card.innerHTML = `
       <div class="drug-header" onclick="toggleDrug(${idx})">
         <div class="drug-checkbox"></div>
         <div class="drug-name-area">
-          <div class="drug-name">
-            ${drug.name}
-            ${drug.sc ? '<span class="sc-badge">SC</span>' : ''}
-          </div>
-          ${drug.note ? '<div class="drug-note">' + drug.note + '</div>' : ''}
+          <div class="drug-name">${escapeHtml(drug.name)}${badge}</div>
+          ${drug.note ? '<div class="drug-note">' + escapeHtml(drug.note) + '</div>' : ''}
         </div>
       </div>
       <div class="drug-detail">
-        <div class="detail-row">
-          <div>
-            <input type="number" class="dose-input" value="${dose}" step="any" min="0"
-              inputmode="decimal" onchange="updateDose(${idx}, this.value)" onfocus="this.select()">
-            <span class="dose-unit">mg/kg</span>
-          </div>
-          <span class="detail-value">${drug.conc} <span class="dose-unit">mg/mL</span></span>
-        </div>
-        <div class="result-row">
-          <span class="result-label">투여량 (Volume)</span>
-          <div>
-            <span class="result-value">${weight > 0 ? volume.toFixed(2) : '-'}</span>
-            <span class="result-unit">mL</span>
-          </div>
-        </div>
+        ${drug.combo ? renderComboDetail(drug, idx, weight) : renderSingleDetail(drug, idx, weight)}
       </div>
     `;
 
     listEl.appendChild(card);
   });
+}
+
+function matchesFilter(drug, lowerFilter) {
+  if (drug.name.toLowerCase().includes(lowerFilter)) return true;
+  if (drug.combo) return drug.items.some(it => it.name.toLowerCase().includes(lowerFilter));
+  return false;
+}
+
+function doseRow(dose, conc, onchange) {
+  return `
+    <div class="detail-row">
+      <div>
+        <input type="number" class="dose-input" value="${dose}" step="any" min="0"
+          inputmode="decimal" onchange="${onchange}" onfocus="this.select()">
+        <span class="dose-unit">mg/kg</span>
+      </div>
+      <span class="detail-value">${conc} <span class="dose-unit">mg/mL</span></span>
+    </div>
+  `;
+}
+
+function resultRow(weight, volume, label) {
+  return `
+    <div class="result-row">
+      <span class="result-label">${label}</span>
+      <div>
+        <span class="result-value">${weight > 0 ? volume.toFixed(2) : '-'}</span>
+        <span class="result-unit">mL</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderSingleDetail(drug, idx, weight) {
+  const dose = drugDoses[idx] !== undefined ? drugDoses[idx] : drug.dose;
+  const volume = (dose * weight) / drug.conc;
+  return doseRow(dose, drug.conc, `updateDose(${idx}, this.value)`)
+    + resultRow(weight, volume, '투여량 (Volume)');
+}
+
+function renderComboDetail(drug, idx, weight) {
+  return drug.items.map((item, i) => {
+    const dose = (drugDoses[idx] || [])[i] !== undefined ? drugDoses[idx][i] : item.dose;
+    const volume = (dose * weight) / item.conc;
+    return `
+      <div class="combo-item">
+        <div class="combo-item-name">
+          ${escapeHtml(item.name)}
+          ${item.sc ? '<span class="sc-badge">SC</span>' : ''}
+        </div>
+        ${doseRow(dose, item.conc, `updateComboDose(${idx}, ${i}, this.value)`)}
+        ${resultRow(weight, volume, '투여량 (Volume)')}
+      </div>
+    `;
+  }).join('');
 }
 
 function toggleDrug(idx) {
@@ -492,6 +620,12 @@ function toggleDrug(idx) {
 
 function updateDose(idx, value) {
   drugDoses[idx] = parseFloat(value) || 0;
+  renderDrugs(document.getElementById('searchInput').value);
+}
+
+function updateComboDose(idx, itemIdx, value) {
+  if (!Array.isArray(drugDoses[idx])) drugDoses[idx] = drugs[idx].items.map(it => it.dose);
+  drugDoses[idx][itemIdx] = parseFloat(value) || 0;
   renderDrugs(document.getElementById('searchInput').value);
 }
 
@@ -508,32 +642,58 @@ function openSummary() {
 
   selectedDrugs.forEach(idx => {
     const drug = drugs[idx];
-    const dose = drugDoses[idx];
-    const totalDose = dose * weight;
-    const volume = totalDose / drug.conc;
 
-    html += `
-      <div class="summary-item${drug.sc ? ' sc' : ''}">
-        <div class="summary-drug-name">
-          ${drug.name}
-          ${drug.sc ? '<span class="sc-badge">SC</span>' : ''}
+    if (drug.combo) {
+      html += `
+        <div class="summary-item">
+          <div class="summary-drug-name">
+            ${escapeHtml(drug.name)}<span class="combo-badge">SET</span>
+          </div>
+          ${drug.note ? '<div class="summary-detail" style="color:#d69e2e;">' + escapeHtml(drug.note) + '</div>' : ''}
+          ${drug.items.map((item, i) => {
+            const dose = (drugDoses[idx] || [])[i];
+            return summaryBody(item, dose, weight, 'summary-sub');
+          }).join('')}
         </div>
-        <div class="summary-detail">
-          ${dose} mg/kg &middot; ${drug.conc} mg/mL
-          ${drug.note ? ' &middot; <span style="color:#d69e2e;">' + drug.note + '</span>' : ''}
+      `;
+    } else {
+      html += `
+        <div class="summary-item${drug.sc ? ' sc' : ''}">
+          ${summaryBody(drug, drugDoses[idx], weight, '')}
         </div>
-        <div class="summary-dose">
-          ${weight > 0 ? volume.toFixed(2) : '-'} mL
-          <span style="font-size:13px;color:#718096;font-weight:500;">
-            (${weight > 0 ? totalDose.toFixed(2) + ' mg' : '-'})
-          </span>
-        </div>
-      </div>
-    `;
+      `;
+    }
   });
 
   content.innerHTML = html;
   document.getElementById('modalOverlay').classList.add('visible');
+}
+
+// 요약 모달의 약물 한 건. sub=true면 세트 안에 들여쓴 형태로 그린다.
+function summaryBody(entry, dose, weight, wrapClass) {
+  const sub = wrapClass === 'summary-sub';
+  const d = dose !== undefined ? dose : entry.dose;
+  const totalDose = d * weight;
+  const volume = totalDose / entry.conc;
+
+  const inner = `
+    <div class="${sub ? 'summary-sub-name' : 'summary-drug-name'}">
+      ${escapeHtml(entry.name)}
+      ${entry.sc ? '<span class="sc-badge">SC</span>' : ''}
+    </div>
+    <div class="summary-detail">
+      ${d} mg/kg &middot; ${entry.conc} mg/mL
+      ${entry.note ? ' &middot; <span style="color:#d69e2e;">' + escapeHtml(entry.note) + '</span>' : ''}
+    </div>
+    <div class="summary-dose"${sub && entry.sc ? ' style="color:#c53030;"' : ''}>
+      ${weight > 0 ? volume.toFixed(2) : '-'} mL
+      <span style="font-size:13px;color:#718096;font-weight:500;">
+        (${weight > 0 ? totalDose.toFixed(2) + ' mg' : '-'})
+      </span>
+    </div>
+  `;
+
+  return sub ? `<div class="summary-sub">${inner}</div>` : inner;
 }
 
 function closeSummary(e) {
@@ -564,26 +724,40 @@ function renderSettings() {
       <div class="add-form-title" id="formTitle">약물 추가</div>
       <div class="form-row">
         <label>이름</label>
-        <input type="text" id="formName" placeholder="약물 이름">
-      </div>
-      <div class="form-row">
-        <label>mg/kg</label>
-        <input type="number" id="formDose" placeholder="0" step="any" inputmode="decimal">
-      </div>
-      <div class="form-row">
-        <label>mg/mL</label>
-        <input type="number" id="formConc" placeholder="0" step="any" inputmode="decimal">
-      </div>
-      <div class="form-row">
-        <label>메모</label>
-        <input type="text" id="formNote" placeholder="(선택사항)">
+        <input type="text" id="formName" placeholder="약물 / 세트 이름">
       </div>
       <div class="form-row">
         <label></label>
         <label class="sc-toggle">
-          <input type="checkbox" id="formSC">
-          SC 약물
+          <input type="checkbox" id="formCombo" onchange="toggleComboForm()">
+          세트 (여러 약물 묶음)
         </label>
+      </div>
+      <div id="singleFields">
+        <div class="form-row">
+          <label>mg/kg</label>
+          <input type="number" id="formDose" placeholder="0" step="any" inputmode="decimal">
+        </div>
+        <div class="form-row">
+          <label>mg/mL</label>
+          <input type="number" id="formConc" placeholder="0" step="any" inputmode="decimal">
+        </div>
+        <div class="form-row">
+          <label></label>
+          <label class="sc-toggle">
+            <input type="checkbox" id="formSC">
+            SC 약물
+          </label>
+        </div>
+      </div>
+      <div id="comboFields" style="display:none;">
+        <div class="combo-form-title">세트 구성 약물</div>
+        <div id="formItems"></div>
+        <button class="btn-add-item" onclick="addFormItem()">+ 약물 추가</button>
+      </div>
+      <div class="form-row" style="margin-top:8px;">
+        <label>메모</label>
+        <input type="text" id="formNote" placeholder="(선택사항)">
       </div>
       <div class="form-actions">
         <button class="btn-action btn-cancel" onclick="cancelEdit()">취소</button>
@@ -595,16 +769,23 @@ function renderSettings() {
   html += '<div style="font-size:13px;font-weight:600;color:#718096;margin-bottom:8px;">약물 목록</div>';
 
   drugs.forEach((drug, idx) => {
+    const meta = drug.combo
+      ? drug.items.map(it => escapeHtml(it.name) + ' ' + it.dose + '/' + it.conc).join(' &middot; ')
+      : drug.dose + ' mg/kg &middot; ' + drug.conc + ' mg/mL';
+    const badge = drug.combo
+      ? '<span class="combo-badge">SET</span>'
+      : (drug.sc ? '<span class="sc-badge">SC</span>' : '');
+
     html += `
       <div class="settings-drug-item">
         <div class="settings-drug-info">
           <div class="settings-drug-name">
-            ${drug.name}
-            ${drug.sc ? '<span class="sc-badge">SC</span>' : ''}
+            ${escapeHtml(drug.name)}
+            ${badge}
           </div>
           <div class="settings-drug-meta">
-            ${drug.dose} mg/kg &middot; ${drug.conc} mg/mL
-            ${drug.note ? ' &middot; ' + drug.note : ''}
+            ${meta}
+            ${drug.note ? ' &middot; ' + escapeHtml(drug.note) : ''}
           </div>
         </div>
         <div class="settings-drug-actions">
@@ -620,21 +801,110 @@ function renderSettings() {
   html += '<button class="btn-reset" onclick="resetDrugs()">기본값 초기화</button>';
 
   content.innerHTML = html;
+  renderFormItems();
+}
+
+// ── 세트 구성 약물 편집 ──
+
+let formItems = [];
+
+function toggleComboForm() {
+  const isCombo = document.getElementById('formCombo').checked;
+  document.getElementById('singleFields').style.display = isCombo ? 'none' : '';
+  document.getElementById('comboFields').style.display = isCombo ? '' : 'none';
+  if (isCombo && formItems.length === 0) addFormItem();
+}
+
+// 입력 중인 값을 formItems에 흡수한다 (다시 그리기 전에 호출).
+function syncFormItems() {
+  const rows = document.querySelectorAll('#formItems .form-item');
+  formItems = Array.from(rows).map(row => ({
+    name: row.querySelector('.fi-name').value,
+    dose: row.querySelector('.fi-dose').value,
+    conc: row.querySelector('.fi-conc').value,
+    sc: row.querySelector('.fi-sc').checked,
+  }));
+}
+
+function renderFormItems() {
+  const box = document.getElementById('formItems');
+  if (!box) return;
+
+  box.innerHTML = formItems.map((item, i) => `
+    <div class="form-item">
+      <div class="form-item-head">
+        <input type="text" class="fi-name" value="${escapeHtml(item.name ?? '')}" placeholder="약물 이름">
+        <button class="btn-icon btn-delete" onclick="removeFormItem(${i})">&#10005;</button>
+      </div>
+      <div class="form-row">
+        <label>mg/kg</label>
+        <input type="number" class="fi-dose" value="${item.dose ?? ''}" placeholder="0" step="any" inputmode="decimal">
+        <label style="width:auto;">mg/mL</label>
+        <input type="number" class="fi-conc" value="${item.conc ?? ''}" placeholder="0" step="any" inputmode="decimal">
+      </div>
+      <label class="sc-toggle">
+        <input type="checkbox" class="fi-sc" ${item.sc ? 'checked' : ''}>
+        SC 약물
+      </label>
+    </div>
+  `).join('');
+}
+
+function addFormItem() {
+  syncFormItems();
+  formItems.push({ name: '', dose: '', conc: '', sc: false });
+  renderFormItems();
+}
+
+function removeFormItem(i) {
+  syncFormItems();
+  formItems.splice(i, 1);
+  renderFormItems();
 }
 
 function saveDrug() {
   const name = document.getElementById('formName').value.trim();
-  const dose = parseFloat(document.getElementById('formDose').value);
-  const conc = parseFloat(document.getElementById('formConc').value);
   const note = document.getElementById('formNote').value.trim();
-  const sc = document.getElementById('formSC').checked;
+  const isCombo = document.getElementById('formCombo').checked;
 
-  if (!name || isNaN(dose) || isNaN(conc) || conc === 0) {
-    alert('이름, mg/kg, mg/mL을 입력해주세요.');
+  if (!name) {
+    alert('이름을 입력해주세요.');
     return;
   }
 
-  const drug = { name, dose, conc, sc, note };
+  let drug;
+
+  if (isCombo) {
+    syncFormItems();
+    const items = formItems.map(it => ({
+      name: (it.name || '').trim(),
+      dose: parseFloat(it.dose),
+      conc: parseFloat(it.conc),
+      sc: !!it.sc,
+    }));
+
+    if (items.length === 0) {
+      alert('세트에 약물을 1개 이상 추가해주세요.');
+      return;
+    }
+    if (items.some(it => !it.name || isNaN(it.dose) || isNaN(it.conc) || it.conc === 0)) {
+      alert('세트 구성 약물의 이름, mg/kg, mg/mL을 모두 입력해주세요.');
+      return;
+    }
+
+    drug = { name, combo: true, note, items };
+  } else {
+    const dose = parseFloat(document.getElementById('formDose').value);
+    const conc = parseFloat(document.getElementById('formConc').value);
+    const sc = document.getElementById('formSC').checked;
+
+    if (isNaN(dose) || isNaN(conc) || conc === 0) {
+      alert('mg/kg, mg/mL을 입력해주세요.');
+      return;
+    }
+
+    drug = { name, dose, conc, sc, note };
+  }
 
   if (editingIdx >= 0) {
     drugs[editingIdx] = drug;
@@ -646,6 +916,7 @@ function saveDrug() {
   saveDrugs();
   selectedDrugs.clear();
   initDoses();
+  formItems = [];
   renderSettings();
   renderDrugs(document.getElementById('searchInput').value);
   updateSummaryBar();
@@ -653,23 +924,42 @@ function saveDrug() {
 
 function cancelEdit() {
   editingIdx = -1;
+  formItems = [];
   document.getElementById('formName').value = '';
   document.getElementById('formDose').value = '';
   document.getElementById('formConc').value = '';
   document.getElementById('formNote').value = '';
   document.getElementById('formSC').checked = false;
+  document.getElementById('formCombo').checked = false;
   document.getElementById('formTitle').textContent = '약물 추가';
+  toggleComboForm();
 }
 
 function editDrug(idx) {
   editingIdx = idx;
   const drug = drugs[idx];
+
   document.getElementById('formName').value = drug.name;
-  document.getElementById('formDose').value = drug.dose;
-  document.getElementById('formConc').value = drug.conc;
   document.getElementById('formNote').value = drug.note || '';
-  document.getElementById('formSC').checked = drug.sc;
-  document.getElementById('formTitle').textContent = '약물 수정';
+  document.getElementById('formCombo').checked = !!drug.combo;
+
+  if (drug.combo) {
+    formItems = drug.items.map(it => ({
+      name: it.name, dose: it.dose, conc: it.conc, sc: !!it.sc,
+    }));
+    document.getElementById('formDose').value = '';
+    document.getElementById('formConc').value = '';
+    document.getElementById('formSC').checked = false;
+  } else {
+    formItems = [];
+    document.getElementById('formDose').value = drug.dose;
+    document.getElementById('formConc').value = drug.conc;
+    document.getElementById('formSC').checked = !!drug.sc;
+  }
+
+  toggleComboForm();
+  renderFormItems();
+  document.getElementById('formTitle').textContent = drug.combo ? '세트 수정' : '약물 수정';
   document.getElementById('drugForm').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -679,6 +969,8 @@ function deleteDrug(idx) {
   saveDrugs();
   selectedDrugs.clear();
   initDoses();
+  editingIdx = -1;
+  formItems = [];
   renderSettings();
   renderDrugs(document.getElementById('searchInput').value);
   updateSummaryBar();
@@ -691,6 +983,8 @@ function moveDrug(idx, dir) {
   saveDrugs();
   selectedDrugs.clear();
   initDoses();
+  editingIdx = -1;
+  formItems = [];
   renderSettings();
   renderDrugs(document.getElementById('searchInput').value);
   updateSummaryBar();
@@ -699,9 +993,12 @@ function moveDrug(idx, dir) {
 function resetDrugs() {
   if (!confirm('기본 약물 목록으로 초기화할까요?\n직접 추가한 약물은 삭제됩니다.')) return;
   localStorage.removeItem('vet_drugs');
+  localStorage.setItem('vet_drugs_version', String(DEFAULTS_VERSION));
   drugs = JSON.parse(JSON.stringify(DEFAULT_DRUGS));
   selectedDrugs.clear();
   initDoses();
+  editingIdx = -1;
+  formItems = [];
   renderSettings();
   renderDrugs(document.getElementById('searchInput').value);
   updateSummaryBar();
