@@ -464,11 +464,33 @@ const DEFAULT_DRUGS = [
       { name: "Maropitant", dose: 1, conc: 10, sc: false },
     ],
   },
+  {
+    name: "CT 전처치", combo: true, note: "",
+    items: [
+      { name: "Butorphanol", dose: 0.1, conc: 1, sc: false },
+      { name: "Propofol", dose: 6, conc: 10, sc: false },
+    ],
+  },
+  {
+    name: "MRI 전처치 (강아지)", combo: true, note: "",
+    items: [
+      { name: "Butorphanol", dose: 0.1, conc: 1, sc: false },
+      { name: "Midazolam", dose: 0.2, conc: 1, sc: false },
+      { name: "Propofol", dose: 6, conc: 10, sc: false },
+    ],
+  },
+  {
+    name: "MRI 전처치 (고양이)", combo: true, note: "",
+    items: [
+      { name: "Butorphanol", dose: 0.1, conc: 1, sc: false },
+      { name: "Propofol", dose: 6, conc: 10, sc: false },
+    ],
+  },
 ];
 
 // DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
 // 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
-const DEFAULTS_VERSION = 2;
+const DEFAULTS_VERSION = 3;
 
 let drugs = loadDrugs();
 let selectedDrugs = new Set();
