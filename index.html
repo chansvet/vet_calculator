@@ -8,6 +8,14 @@
 <title>약물 용량 계산기</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* 숫자 입력칸의 상하 화살표 제거 (좁은 화면에서 폭을 잡아먹음) */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: #f0f4f8;
@@ -19,7 +27,7 @@
   .header {
     background: linear-gradient(135deg, #2b6cb0, #2c5282);
     color: white;
-    padding: 16px 20px;
+    padding: 10px 16px;
     position: sticky;
     top: 0;
     z-index: 100;
@@ -28,8 +36,8 @@
     justify-content: space-between;
     align-items: center;
   }
-  .header-left h1 { font-size: 19px; font-weight: 700; }
-  .header-left p { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+  .header-left h1 { font-size: 18px; font-weight: 700; }
+  .header-left p { font-size: 11px; opacity: 0.85; margin-top: 1px; }
   .header-actions { display: flex; align-items: center; gap: 8px; }
   .reset-btn {
     background: rgba(255,255,255,0.2);
@@ -61,32 +69,35 @@
 
   .weight-section {
     background: white;
-    margin: 12px;
-    padding: 16px;
+    margin: 8px 10px;
+    padding: 10px 12px;
     border-radius: 12px;
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
   .weight-section label {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: #4a5568;
-    display: block;
-    margin-bottom: 8px;
+    flex-shrink: 0;
   }
   .weight-input-wrap {
     display: flex;
     align-items: center;
     gap: 8px;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
   }
   .weight-input-wrap input {
     flex: 1;
     min-width: 0;
     width: 0;
-    font-size: 30px;
+    font-size: 26px;
     font-weight: 700;
-    padding: 10px 14px;
+    padding: 6px 12px;
     border: 2px solid #e2e8f0;
     border-radius: 10px;
     text-align: center;
@@ -103,12 +114,12 @@
   }
 
   .search-section {
-    margin: 0 12px;
+    margin: 0 10px;
     position: relative;
   }
   .search-section input {
     width: 100%;
-    padding: 10px 14px 10px 36px;
+    padding: 8px 14px 8px 36px;
     border: 2px solid #e2e8f0;
     border-radius: 10px;
     font-size: 14px;
@@ -125,12 +136,12 @@
     font-size: 14px;
   }
 
-  .drug-list { margin: 12px; }
+  .drug-list { margin: 8px 10px; }
 
   .drug-card {
     background: white;
     border-radius: 10px;
-    margin-bottom: 8px;
+    margin-bottom: 5px;
     border: 2px solid transparent;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     overflow: hidden;
@@ -149,12 +160,13 @@
   .drug-header {
     display: flex;
     align-items: center;
-    padding: 12px 14px;
+    padding: 9px 12px;
+    min-height: 44px;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
   .drug-checkbox {
-    width: 22px; height: 22px;
+    width: 21px; height: 21px;
     border: 2px solid #cbd5e0;
     border-radius: 6px;
     margin-right: 10px;
