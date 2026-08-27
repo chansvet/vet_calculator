@@ -136,6 +136,36 @@
     font-size: 14px;
   }
 
+  .tabs { display: flex; gap: 6px; margin: 8px 10px 0; }
+  .tab {
+    flex: 1; padding: 9px 8px; border: none; border-radius: 10px;
+    background: #e2e8f0; color: #4a5568;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, color 0.15s;
+  }
+  .tab-count { font-size: 11px; font-weight: 600; opacity: 0.7; }
+  .tab[data-tab="drug"].active { background: #2b6cb0; color: white; }
+  .tab[data-tab="combo"].active { background: #805ad5; color: white; }
+  .tab-badge {
+    min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
+    background: #e53e3e; color: white;
+    font-size: 10px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .tab.active .tab-badge { background: rgba(255,255,255,0.9); color: #2b6cb0; }
+  .tab[data-tab="combo"].active .tab-badge { color: #6b46c1; }
+
+  .empty-hint {
+    text-align: center; color: #a0aec0;
+    font-size: 13px; line-height: 1.7; padding: 28px 16px;
+  }
+  .empty-hint .link {
+    color: #2b6cb0; font-weight: 700; text-decoration: underline;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+
   .drug-list { margin: 8px 10px; }
 
   .drug-card {
@@ -423,6 +453,8 @@
   <input type="text" id="searchInput" placeholder="약물 검색...">
 </div>
 
+<div class="tabs" id="tabBar"></div>
+
 <div id="drugContainer"></div>
 
 <div class="summary-bar" id="summaryBar">
@@ -550,10 +582,63 @@ function escapeHtml(str) {
   ));
 }
 
+// 'drug' = 단일 약물 탭, 'combo' = 전처치(세트) 탭
+let activeTab = 'drug';
+
+function switchTab(tab) {
+  activeTab = tab;
+  renderDrugs(document.getElementById('searchInput').value);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderTabs(drugCount, comboCount) {
+  const selectedIn = kind => Array.from(selectedDrugs)
+    .filter(i => drugs[i] && (kind === 'combo' ? drugs[i].combo : !drugs[i].combo)).length;
+
+  const tab = (key, label, count) => {
+    const sel = selectedIn(key);
+    return `
+      <button class="tab${activeTab === key ? ' active' : ''}" data-tab="${key}"
+        onclick="switchTab('${key}')">
+        ${label}
+        <span class="tab-count">${count}</span>
+        ${sel > 0 ? '<span class="tab-badge">' + sel + '</span>' : ''}
+      </button>
+    `;
+  };
+
+  document.getElementById('tabBar').innerHTML =
+    tab('drug', '약물', drugCount) + tab('combo', '전처치', comboCount);
+}
+
 function renderDrugs(filter = '') {
   const container = document.getElementById('drugContainer');
   container.innerHTML = '';
   const lowerFilter = filter.toLowerCase();
+
+  const matched = drugs
+    .map((drug, idx) => ({ drug, idx }))
+    .filter(x => !filter || matchesFilter(x.drug, lowerFilter));
+
+  const inTab = kind => matched.filter(x => (kind === 'combo' ? !!x.drug.combo : !x.drug.combo));
+  const shown = inTab(activeTab);
+  const otherKey = activeTab === 'combo' ? 'drug' : 'combo';
+  const otherCount = inTab(otherKey).length;
+
+  renderTabs(inTab('drug').length, inTab('combo').length);
+
+  if (shown.length === 0) {
+    container.innerHTML = `
+      <div class="empty-hint">
+        ${filter ? '검색 결과가 없습니다.' : '항목이 없습니다.'}
+        ${otherCount > 0
+          ? '<br><span class="link" onclick="switchTab(\'' + otherKey + '\')">'
+            + (otherKey === 'combo' ? '전처치' : '약물') + ' 탭에 ' + otherCount + '개 있습니다</span>'
+          : ''}
+      </div>
+    `;
+    return;
+  }
 
   const listEl = document.createElement('div');
   listEl.className = 'drug-list';
@@ -561,9 +646,7 @@ function renderDrugs(filter = '') {
 
   const weight = parseFloat(document.getElementById('weightInput').value) || 0;
 
-  drugs.forEach((drug, idx) => {
-    if (filter && !matchesFilter(drug, lowerFilter)) return;
-
+  shown.forEach(({ drug, idx }) => {
     const card = document.createElement('div');
     card.className = 'drug-card'
       + (drug.combo ? ' combo-drug' : (drug.sc ? ' sc-drug' : ''))
