@@ -147,7 +147,7 @@
   }
   .tab-count { font-size: 11px; font-weight: 600; opacity: 0.7; }
   .tab[data-tab="drug"].active { background: #2b6cb0; color: white; }
-  .tab[data-tab="combo"].active { background: #805ad5; color: white; }
+  .tab[data-tab="anes"].active { background: #805ad5; color: white; }
   .tab-badge {
     min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
     background: #e53e3e; color: white;
@@ -155,7 +155,7 @@
     display: inline-flex; align-items: center; justify-content: center;
   }
   .tab.active .tab-badge { background: rgba(255,255,255,0.9); color: #2b6cb0; }
-  .tab[data-tab="combo"].active .tab-badge { color: #6b46c1; }
+  .tab[data-tab="anes"].active .tab-badge { color: #6b46c1; }
 
   .empty-hint {
     text-align: center; color: #a0aec0;
@@ -255,6 +255,23 @@
   .combo-item-name {
     font-size: 14px; font-weight: 700; color: #4a5568;
   }
+  /* 용량 고정 약물은 입력칸 대신 값만 보여준다 */
+  .dose-fixed {
+    display: inline-block; padding: 4px 10px;
+    background: #edf2f7; border-radius: 6px;
+    font-size: 14px; font-weight: 700; color: #4a5568;
+  }
+  .tab-tag {
+    background: #e9d8fd; color: #6b46c1;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 6px; border-radius: 4px; margin-left: 6px;
+  }
+  .fixed-badge {
+    background: #edf2f7; color: #718096;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 6px; border-radius: 4px; margin-left: 6px;
+  }
+
   .combo-item-note {
     font-size: 11px; color: #d69e2e; font-weight: 600; margin-top: 1px;
   }
@@ -509,7 +526,8 @@ const DEFAULT_DRUGS = [
   { name: "Tramadol", dose: 4, conc: 50, sc: false, note: "" },
   { name: "Tranexamic acid (트라넥삼산)", dose: 10, conc: 100, sc: false, note: "" },
   { name: "Dalteparin", dose: 150, conc: 2500, unit: "IU", sc: true, note: "" },
-  { name: "Medetomidine (도미토)", dose: 10, conc: 1, unit: "ug", sc: false, note: "5–20 µg/kg" },
+  { name: "Medetomidine (도미토)", dose: 10, conc: 1, unit: "ug", sc: false,
+    tab: "anes", fixed: false, note: "5–20 µg/kg" },
   {
     name: "항암·수혈 전처치", combo: true, note: "항암 / 수혈 전 투여",
     items: [
@@ -540,7 +558,7 @@ const DEFAULT_DRUGS = [
     ],
   },
   {
-    name: "DK (Medetomidine + Ketamine)", combo: true, note: "합제로 섞어서 투여",
+    name: "DK (Medetomidine + Ketamine)", combo: true, fixed: true, note: "합제로 섞어서 투여",
     items: [
       { name: "Domitor (Medetomidine)", dose: 10, conc: 1, unit: "ug", sc: false,
         note: "양이 적어 인슐린 주사기로" },
@@ -551,18 +569,27 @@ const DEFAULT_DRUGS = [
 
 // DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
 // 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
-const DEFAULTS_VERSION = 4;
+const DEFAULTS_VERSION = 5;
 
-// 단위 표기가 뒤늦게 도입되어, 저장된 목록의 기본 약물에 unit이 없으면 채워준다.
-// 사용자가 직접 고친 값은 건드리지 않도록 unit이 없을 때만 적용한다.
-const UNIT_BACKFILL = { "Dalteparin": { unit: "IU", oldNote: "단위는 mg가 아닌 IU" } };
+// unit / tab / fixed는 뒤늦게 도입된 속성이라 예전에 저장된 목록에는 없다.
+// 설정에서 저장한 약물은 이 속성들을 항상 명시적으로 기록하므로,
+// 속성이 아예 없다 = 사용자가 건드린 적 없다는 뜻이라 기본값을 채워도 안전하다.
+const BACKFILL_FIELDS = ['unit', 'tab', 'fixed'];
 
-function backfillUnits(list) {
+// 기본 메모가 바뀐 약물. 사용자가 안 고쳤을 때만 새 메모로 교체한다.
+const LEGACY_NOTES = { "Dalteparin": "단위는 mg가 아닌 IU" };
+
+function backfillDefaults(list) {
+  const byName = new Map(DEFAULT_DRUGS.map(d => [d.name, d]));
   list.forEach(d => {
-    const fix = UNIT_BACKFILL[d.name];
-    if (!fix || d.combo || d.unit) return;
-    d.unit = fix.unit;
-    if (d.note === fix.oldNote) d.note = '';
+    const def = byName.get(d.name);
+    if (!def) return;
+    BACKFILL_FIELDS.forEach(f => {
+      if (def[f] !== undefined && d[f] === undefined) d[f] = def[f];
+    });
+    if (LEGACY_NOTES[d.name] !== undefined && d.note === LEGACY_NOTES[d.name]) {
+      d.note = def.note;
+    }
   });
 }
 
@@ -581,7 +608,7 @@ function loadDrugs() {
   const savedVersion = parseInt(localStorage.getItem('vet_drugs_version') || '1', 10);
 
   if (savedVersion < DEFAULTS_VERSION) {
-    backfillUnits(list);
+    backfillDefaults(list);
     const existing = new Set(list.map(d => d.name));
     DEFAULT_DRUGS.forEach(d => {
       if (!existing.has(d.name)) list.push(JSON.parse(JSON.stringify(d)));
@@ -613,7 +640,13 @@ function escapeHtml(str) {
   ));
 }
 
-// 'drug' = 단일 약물 탭, 'combo' = 전처치(세트) 탭
+// 탭 소속은 약물마다 지정한다. 지정이 없으면 세트는 마취 탭, 단일 약물은 약물 탭.
+const TABS = { drug: '약물', anes: '마취 및 전처치' };
+
+function tabOf(drug) {
+  return TABS[drug.tab] ? drug.tab : (drug.combo ? 'anes' : 'drug');
+}
+
 let activeTab = 'drug';
 
 function switchTab(tab) {
@@ -622,24 +655,23 @@ function switchTab(tab) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function renderTabs(drugCount, comboCount) {
-  const selectedIn = kind => Array.from(selectedDrugs)
-    .filter(i => drugs[i] && (kind === 'combo' ? drugs[i].combo : !drugs[i].combo)).length;
+function renderTabs(counts) {
+  const selectedIn = key => Array.from(selectedDrugs)
+    .filter(i => drugs[i] && tabOf(drugs[i]) === key).length;
 
-  const tab = (key, label, count) => {
+  const tab = key => {
     const sel = selectedIn(key);
     return `
       <button class="tab${activeTab === key ? ' active' : ''}" data-tab="${key}"
         onclick="switchTab('${key}')">
-        ${label}
-        <span class="tab-count">${count}</span>
+        ${TABS[key]}
+        <span class="tab-count">${counts[key]}</span>
         ${sel > 0 ? '<span class="tab-badge">' + sel + '</span>' : ''}
       </button>
     `;
   };
 
-  document.getElementById('tabBar').innerHTML =
-    tab('drug', '약물', drugCount) + tab('combo', '전처치', comboCount);
+  document.getElementById('tabBar').innerHTML = tab('drug') + tab('anes');
 }
 
 function renderDrugs(filter = '') {
@@ -651,12 +683,12 @@ function renderDrugs(filter = '') {
     .map((drug, idx) => ({ drug, idx }))
     .filter(x => !filter || matchesFilter(x.drug, lowerFilter));
 
-  const inTab = kind => matched.filter(x => (kind === 'combo' ? !!x.drug.combo : !x.drug.combo));
+  const inTab = key => matched.filter(x => tabOf(x.drug) === key);
   const shown = inTab(activeTab);
-  const otherKey = activeTab === 'combo' ? 'drug' : 'combo';
+  const otherKey = activeTab === 'anes' ? 'drug' : 'anes';
   const otherCount = inTab(otherKey).length;
 
-  renderTabs(inTab('drug').length, inTab('combo').length);
+  renderTabs({ drug: inTab('drug').length, anes: inTab('anes').length });
 
   if (shown.length === 0) {
     container.innerHTML = `
@@ -664,7 +696,7 @@ function renderDrugs(filter = '') {
         ${filter ? '검색 결과가 없습니다.' : '항목이 없습니다.'}
         ${otherCount > 0
           ? '<br><span class="link" onclick="switchTab(\'' + otherKey + '\')">'
-            + (otherKey === 'combo' ? '전처치' : '약물') + ' 탭에 ' + otherCount + '개 있습니다</span>'
+            + TABS[otherKey] + ' 탭에 ' + otherCount + '개 있습니다</span>'
           : ''}
       </div>
     `;
@@ -734,13 +766,15 @@ function calcAmount(entry, dose, weight) {
   return u === 'mL' ? null : dose * weight;
 }
 
-function doseRow(entry, dose, onchange) {
+function doseRow(entry, dose, onchange, fixed) {
   const u = UNITS[unitOf(entry)];
   return `
     <div class="detail-row">
       <div>
-        <input type="number" class="dose-input" value="${dose}" step="any" min="0"
-          inputmode="decimal" onchange="${onchange}" onfocus="this.select()">
+        ${fixed
+          ? '<span class="dose-fixed">' + dose + '</span>'
+          : '<input type="number" class="dose-input" value="' + dose + '" step="any" min="0"'
+            + ' inputmode="decimal" onchange="' + onchange + '" onfocus="this.select()">'}
         <span class="dose-unit">${u.dose}</span>
       </div>
       ${u.conc
@@ -764,7 +798,7 @@ function resultRow(weight, volume, label) {
 
 function renderSingleDetail(drug, idx, weight) {
   const dose = drugDoses[idx] !== undefined ? drugDoses[idx] : drug.dose;
-  return doseRow(drug, dose, `updateDose(${idx}, this.value)`)
+  return doseRow(drug, dose, `updateDose(${idx}, this.value)`, !!drug.fixed)
     + resultRow(weight, calcVolume(drug, dose, weight), '투여량 (Volume)');
 }
 
@@ -778,7 +812,7 @@ function renderComboDetail(drug, idx, weight) {
           ${item.sc ? '<span class="sc-badge">SC</span>' : ''}
         </div>
         ${item.note ? '<div class="combo-item-note">' + escapeHtml(item.note) + '</div>' : ''}
-        ${doseRow(item, dose, `updateComboDose(${idx}, ${i}, this.value)`)}
+        ${doseRow(item, dose, `updateComboDose(${idx}, ${i}, this.value)`, !!(drug.fixed || item.fixed))}
         ${resultRow(weight, calcVolume(item, dose, weight), '투여량 (Volume)')}
       </div>
     `;
@@ -902,10 +936,24 @@ function renderSettings() {
         <input type="text" id="formName" placeholder="약물 / 세트 이름">
       </div>
       <div class="form-row">
+        <label>탭</label>
+        <select id="formTab">
+          <option value="drug">약물</option>
+          <option value="anes">마취 및 전처치</option>
+        </select>
+      </div>
+      <div class="form-row">
         <label></label>
         <label class="sc-toggle">
           <input type="checkbox" id="formCombo" onchange="toggleComboForm()">
           세트 (여러 약물 묶음)
+        </label>
+      </div>
+      <div class="form-row">
+        <label></label>
+        <label class="sc-toggle">
+          <input type="checkbox" id="formFixed">
+          용량 고정 (카드에서 수정 불가)
         </label>
       </div>
       <div id="singleFields">
@@ -955,9 +1003,10 @@ function renderSettings() {
     const meta = drug.combo
       ? drug.items.map(it => escapeHtml(it.name) + ' ' + metaOf(it)).join(' &middot; ')
       : metaOf(drug);
-    const badge = drug.combo
-      ? '<span class="combo-badge">SET</span>'
-      : (drug.sc ? '<span class="sc-badge">SC</span>' : '');
+    const badge = (drug.combo ? '<span class="combo-badge">SET</span>' : '')
+      + (drug.sc ? '<span class="sc-badge">SC</span>' : '')
+      + (tabOf(drug) === 'anes' ? '<span class="tab-tag">마취</span>' : '')
+      + (drug.fixed ? '<span class="fixed-badge">고정</span>' : '');
 
     html += `
       <div class="settings-drug-item">
@@ -1091,6 +1140,9 @@ function saveDrug() {
 
   let drug;
 
+  const tab = document.getElementById('formTab').value === 'anes' ? 'anes' : 'drug';
+  const fixed = document.getElementById('formFixed').checked;
+
   // mL/kg는 역가를 쓰지 않으므로 역가 검사에서 제외한다.
   const needsConc = u => !!UNITS[u || 'mg'].conc;
 
@@ -1115,7 +1167,7 @@ function saveDrug() {
       return;
     }
 
-    drug = { name, combo: true, note, items };
+    drug = { name, combo: true, note, items, tab, fixed };
   } else {
     const unit = document.getElementById('formUnit').value || 'mg';
     const dose = parseFloat(document.getElementById('formDose').value);
@@ -1127,7 +1179,7 @@ function saveDrug() {
       return;
     }
 
-    drug = { name, dose, conc, unit, sc, note };
+    drug = { name, dose, conc, unit, sc, note, tab, fixed };
   }
 
   if (editingIdx >= 0) {
@@ -1156,6 +1208,8 @@ function cancelEdit() {
   document.getElementById('formSC').checked = false;
   document.getElementById('formCombo').checked = false;
   document.getElementById('formUnit').value = 'mg';
+  document.getElementById('formTab').value = 'drug';
+  document.getElementById('formFixed').checked = false;
   document.getElementById('formTitle').textContent = '약물 추가';
   syncUnitLabels();
   toggleComboForm();
@@ -1168,6 +1222,8 @@ function editDrug(idx) {
   document.getElementById('formName').value = drug.name;
   document.getElementById('formNote').value = drug.note || '';
   document.getElementById('formCombo').checked = !!drug.combo;
+  document.getElementById('formTab').value = tabOf(drug);
+  document.getElementById('formFixed').checked = !!drug.fixed;
 
   if (drug.combo) {
     formItems = drug.items.map(it => ({
