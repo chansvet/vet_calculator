@@ -255,6 +255,9 @@
   .combo-item-name {
     font-size: 14px; font-weight: 700; color: #4a5568;
   }
+  .combo-item-note {
+    font-size: 11px; color: #d69e2e; font-weight: 600; margin-top: 1px;
+  }
 
   .detail-row {
     display: flex;
@@ -377,7 +380,12 @@
     border: 1.5px solid #e2e8f0; border-radius: 8px;
     font-size: 14px; outline: none;
   }
-  .form-row input:focus { border-color: #2b6cb0; }
+  .form-row input:focus, .form-row select:focus { border-color: #2b6cb0; }
+  .form-row select {
+    flex: 1; padding: 8px 10px; background: white;
+    border: 1.5px solid #e2e8f0; border-radius: 8px;
+    font-size: 14px; outline: none; color: #2d3748;
+  }
   .sc-toggle {
     display: flex; align-items: center; gap: 6px;
     font-size: 13px; color: #718096; cursor: pointer;
@@ -500,7 +508,8 @@ const DEFAULT_DRUGS = [
   { name: "Marbofloxacin (Marbocyl)", dose: 2, conc: 10, sc: false, note: "" },
   { name: "Tramadol", dose: 4, conc: 50, sc: false, note: "" },
   { name: "Tranexamic acid (트라넥삼산)", dose: 10, conc: 100, sc: false, note: "" },
-  { name: "Dalteparin", dose: 150, conc: 2500, sc: true, note: "단위는 mg가 아닌 IU" },
+  { name: "Dalteparin", dose: 150, conc: 2500, unit: "IU", sc: true, note: "" },
+  { name: "Medetomidine (도미토)", dose: 10, conc: 1, unit: "ug", sc: false, note: "5–20 µg/kg" },
   {
     name: "항암·수혈 전처치", combo: true, note: "항암 / 수혈 전 투여",
     items: [
@@ -530,11 +539,32 @@ const DEFAULT_DRUGS = [
       { name: "Propofol", dose: 6, conc: 10, sc: false },
     ],
   },
+  {
+    name: "DK (Medetomidine + Ketamine)", combo: true, note: "합제로 섞어서 투여",
+    items: [
+      { name: "Domitor (Medetomidine)", dose: 10, conc: 1, unit: "ug", sc: false,
+        note: "양이 적어 인슐린 주사기로" },
+      { name: "Ketamine", dose: 0.1, conc: 0, unit: "mL", sc: false, note: "" },
+    ],
+  },
 ];
 
 // DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
 // 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
-const DEFAULTS_VERSION = 3;
+const DEFAULTS_VERSION = 4;
+
+// 단위 표기가 뒤늦게 도입되어, 저장된 목록의 기본 약물에 unit이 없으면 채워준다.
+// 사용자가 직접 고친 값은 건드리지 않도록 unit이 없을 때만 적용한다.
+const UNIT_BACKFILL = { "Dalteparin": { unit: "IU", oldNote: "단위는 mg가 아닌 IU" } };
+
+function backfillUnits(list) {
+  list.forEach(d => {
+    const fix = UNIT_BACKFILL[d.name];
+    if (!fix || d.combo || d.unit) return;
+    d.unit = fix.unit;
+    if (d.note === fix.oldNote) d.note = '';
+  });
+}
 
 let drugs = loadDrugs();
 let selectedDrugs = new Set();
@@ -551,6 +581,7 @@ function loadDrugs() {
   const savedVersion = parseInt(localStorage.getItem('vet_drugs_version') || '1', 10);
 
   if (savedVersion < DEFAULTS_VERSION) {
+    backfillUnits(list);
     const existing = new Set(list.map(d => d.name));
     DEFAULT_DRUGS.forEach(d => {
       if (!existing.has(d.name)) list.push(JSON.parse(JSON.stringify(d)));
@@ -679,15 +710,42 @@ function matchesFilter(drug, lowerFilter) {
   return false;
 }
 
-function doseRow(dose, conc, onchange) {
+// 용량 단위. mL는 체중당 부피를 직접 지정하므로 역가를 쓰지 않는다.
+// toMg는 역가(mg/mL, IU/mL)와 같은 단위로 맞추기 위한 환산 계수.
+const UNITS = {
+  mg: { dose: 'mg/kg', conc: 'mg/mL', amount: 'mg', toMg: 1 },
+  ug: { dose: 'µg/kg', conc: 'mg/mL', amount: 'µg', toMg: 0.001 },
+  IU: { dose: 'IU/kg', conc: 'IU/mL', amount: 'IU', toMg: 1 },
+  mL: { dose: 'mL/kg', conc: null, amount: null, toMg: null },
+};
+
+function unitOf(entry) { return UNITS[entry.unit] ? entry.unit : 'mg'; }
+
+// 투여 부피(mL)
+function calcVolume(entry, dose, weight) {
+  const u = unitOf(entry);
+  if (u === 'mL') return dose * weight;
+  return (dose * UNITS[u].toMg * weight) / entry.conc;
+}
+
+// 총 투여량. mL/kg 지정은 질량으로 환산할 수 없어 null.
+function calcAmount(entry, dose, weight) {
+  const u = unitOf(entry);
+  return u === 'mL' ? null : dose * weight;
+}
+
+function doseRow(entry, dose, onchange) {
+  const u = UNITS[unitOf(entry)];
   return `
     <div class="detail-row">
       <div>
         <input type="number" class="dose-input" value="${dose}" step="any" min="0"
           inputmode="decimal" onchange="${onchange}" onfocus="this.select()">
-        <span class="dose-unit">mg/kg</span>
+        <span class="dose-unit">${u.dose}</span>
       </div>
-      <span class="detail-value">${conc} <span class="dose-unit">mg/mL</span></span>
+      ${u.conc
+        ? '<span class="detail-value">' + entry.conc + ' <span class="dose-unit">' + u.conc + '</span></span>'
+        : ''}
     </div>
   `;
 }
@@ -706,23 +764,22 @@ function resultRow(weight, volume, label) {
 
 function renderSingleDetail(drug, idx, weight) {
   const dose = drugDoses[idx] !== undefined ? drugDoses[idx] : drug.dose;
-  const volume = (dose * weight) / drug.conc;
-  return doseRow(dose, drug.conc, `updateDose(${idx}, this.value)`)
-    + resultRow(weight, volume, '투여량 (Volume)');
+  return doseRow(drug, dose, `updateDose(${idx}, this.value)`)
+    + resultRow(weight, calcVolume(drug, dose, weight), '투여량 (Volume)');
 }
 
 function renderComboDetail(drug, idx, weight) {
   return drug.items.map((item, i) => {
     const dose = (drugDoses[idx] || [])[i] !== undefined ? drugDoses[idx][i] : item.dose;
-    const volume = (dose * weight) / item.conc;
     return `
       <div class="combo-item">
         <div class="combo-item-name">
           ${escapeHtml(item.name)}
           ${item.sc ? '<span class="sc-badge">SC</span>' : ''}
         </div>
-        ${doseRow(dose, item.conc, `updateComboDose(${idx}, ${i}, this.value)`)}
-        ${resultRow(weight, volume, '투여량 (Volume)')}
+        ${item.note ? '<div class="combo-item-note">' + escapeHtml(item.note) + '</div>' : ''}
+        ${doseRow(item, dose, `updateComboDose(${idx}, ${i}, this.value)`)}
+        ${resultRow(weight, calcVolume(item, dose, weight), '투여량 (Volume)')}
       </div>
     `;
   }).join('');
@@ -790,8 +847,9 @@ function openSummary() {
 function summaryBody(entry, dose, weight, wrapClass) {
   const sub = wrapClass === 'summary-sub';
   const d = dose !== undefined ? dose : entry.dose;
-  const totalDose = d * weight;
-  const volume = totalDose / entry.conc;
+  const u = UNITS[unitOf(entry)];
+  const volume = calcVolume(entry, d, weight);
+  const amount = calcAmount(entry, d, weight);
 
   const inner = `
     <div class="${sub ? 'summary-sub-name' : 'summary-drug-name'}">
@@ -799,14 +857,14 @@ function summaryBody(entry, dose, weight, wrapClass) {
       ${entry.sc ? '<span class="sc-badge">SC</span>' : ''}
     </div>
     <div class="summary-detail">
-      ${d} mg/kg &middot; ${entry.conc} mg/mL
+      ${d} ${u.dose}${u.conc ? ' &middot; ' + entry.conc + ' ' + u.conc : ''}
       ${entry.note ? ' &middot; <span style="color:#d69e2e;">' + escapeHtml(entry.note) + '</span>' : ''}
     </div>
     <div class="summary-dose"${sub && entry.sc ? ' style="color:#c53030;"' : ''}>
       ${weight > 0 ? volume.toFixed(2) : '-'} mL
-      <span style="font-size:13px;color:#718096;font-weight:500;">
-        (${weight > 0 ? totalDose.toFixed(2) + ' mg' : '-'})
-      </span>
+      ${amount !== null ? `<span style="font-size:13px;color:#718096;font-weight:500;">
+        (${weight > 0 ? amount.toFixed(2) + ' ' + u.amount : '-'})
+      </span>` : ''}
     </div>
   `;
 
@@ -852,11 +910,15 @@ function renderSettings() {
       </div>
       <div id="singleFields">
         <div class="form-row">
-          <label>mg/kg</label>
-          <input type="number" id="formDose" placeholder="0" step="any" inputmode="decimal">
+          <label>단위</label>
+          <select id="formUnit" onchange="syncUnitLabels()">${unitOptions()}</select>
         </div>
         <div class="form-row">
-          <label>mg/mL</label>
+          <label id="formDoseLabel">mg/kg</label>
+          <input type="number" id="formDose" placeholder="0" step="any" inputmode="decimal">
+        </div>
+        <div class="form-row" id="formConcRow">
+          <label id="formConcLabel">mg/mL</label>
           <input type="number" id="formConc" placeholder="0" step="any" inputmode="decimal">
         </div>
         <div class="form-row">
@@ -886,9 +948,13 @@ function renderSettings() {
   html += '<div style="font-size:13px;font-weight:600;color:#718096;margin-bottom:8px;">약물 목록</div>';
 
   drugs.forEach((drug, idx) => {
+    const metaOf = e => {
+      const u = UNITS[unitOf(e)];
+      return e.dose + ' ' + u.dose + (u.conc ? ' / ' + e.conc + ' ' + u.conc : '');
+    };
     const meta = drug.combo
-      ? drug.items.map(it => escapeHtml(it.name) + ' ' + it.dose + '/' + it.conc).join(' &middot; ')
-      : drug.dose + ' mg/kg &middot; ' + drug.conc + ' mg/mL';
+      ? drug.items.map(it => escapeHtml(it.name) + ' ' + metaOf(it)).join(' &middot; ')
+      : metaOf(drug);
     const badge = drug.combo
       ? '<span class="combo-badge">SET</span>'
       : (drug.sc ? '<span class="sc-badge">SC</span>' : '');
@@ -932,13 +998,29 @@ function toggleComboForm() {
   if (isCombo && formItems.length === 0) addFormItem();
 }
 
+function unitOptions(selected) {
+  return Object.keys(UNITS).map(k =>
+    `<option value="${k}"${k === (selected || 'mg') ? ' selected' : ''}>${UNITS[k].dose}</option>`
+  ).join('');
+}
+
+// 단위 선택에 맞춰 라벨을 바꾸고, mL/kg일 때는 역가 칸을 감춘다.
+function syncUnitLabels() {
+  const u = UNITS[document.getElementById('formUnit').value] || UNITS.mg;
+  document.getElementById('formDoseLabel').textContent = u.dose;
+  document.getElementById('formConcRow').style.display = u.conc ? '' : 'none';
+  if (u.conc) document.getElementById('formConcLabel').textContent = u.conc;
+}
+
 // 입력 중인 값을 formItems에 흡수한다 (다시 그리기 전에 호출).
 function syncFormItems() {
   const rows = document.querySelectorAll('#formItems .form-item');
   formItems = Array.from(rows).map(row => ({
     name: row.querySelector('.fi-name').value,
+    unit: row.querySelector('.fi-unit').value,
     dose: row.querySelector('.fi-dose').value,
     conc: row.querySelector('.fi-conc').value,
+    note: row.querySelector('.fi-note').value,
     sc: row.querySelector('.fi-sc').checked,
   }));
 }
@@ -947,29 +1029,47 @@ function renderFormItems() {
   const box = document.getElementById('formItems');
   if (!box) return;
 
-  box.innerHTML = formItems.map((item, i) => `
+  box.innerHTML = formItems.map((item, i) => {
+    const u = UNITS[item.unit] || UNITS.mg;
+    return `
     <div class="form-item">
       <div class="form-item-head">
         <input type="text" class="fi-name" value="${escapeHtml(item.name ?? '')}" placeholder="약물 이름">
         <button class="btn-icon btn-delete" onclick="removeFormItem(${i})">&#10005;</button>
       </div>
       <div class="form-row">
-        <label>mg/kg</label>
+        <label>단위</label>
+        <select class="fi-unit" onchange="onItemUnitChange(${i}, this.value)">${unitOptions(item.unit)}</select>
+      </div>
+      <div class="form-row">
+        <label>${u.dose}</label>
         <input type="number" class="fi-dose" value="${item.dose ?? ''}" placeholder="0" step="any" inputmode="decimal">
-        <label style="width:auto;">mg/mL</label>
-        <input type="number" class="fi-conc" value="${item.conc ?? ''}" placeholder="0" step="any" inputmode="decimal">
+        <label style="width:auto;${u.conc ? '' : 'display:none;'}">${u.conc || ''}</label>
+        <input type="number" class="fi-conc" value="${item.conc ?? ''}" placeholder="0" step="any"
+          inputmode="decimal"${u.conc ? '' : ' style="display:none;"'}>
+      </div>
+      <div class="form-row">
+        <label>메모</label>
+        <input type="text" class="fi-note" value="${escapeHtml(item.note ?? '')}" placeholder="(선택사항)">
       </div>
       <label class="sc-toggle">
         <input type="checkbox" class="fi-sc" ${item.sc ? 'checked' : ''}>
         SC 약물
       </label>
     </div>
-  `).join('');
+  `;
+  }).join('');
+}
+
+function onItemUnitChange(i, unit) {
+  syncFormItems();
+  formItems[i].unit = unit;
+  renderFormItems();
 }
 
 function addFormItem() {
   syncFormItems();
-  formItems.push({ name: '', dose: '', conc: '', sc: false });
+  formItems.push({ name: '', dose: '', conc: '', unit: 'mg', note: '', sc: false });
   renderFormItems();
 }
 
@@ -991,36 +1091,43 @@ function saveDrug() {
 
   let drug;
 
+  // mL/kg는 역가를 쓰지 않으므로 역가 검사에서 제외한다.
+  const needsConc = u => !!UNITS[u || 'mg'].conc;
+
   if (isCombo) {
     syncFormItems();
     const items = formItems.map(it => ({
       name: (it.name || '').trim(),
       dose: parseFloat(it.dose),
-      conc: parseFloat(it.conc),
+      conc: needsConc(it.unit) ? parseFloat(it.conc) : 0,
+      unit: it.unit || 'mg',
       sc: !!it.sc,
+      note: (it.note || '').trim(),
     }));
 
     if (items.length === 0) {
       alert('세트에 약물을 1개 이상 추가해주세요.');
       return;
     }
-    if (items.some(it => !it.name || isNaN(it.dose) || isNaN(it.conc) || it.conc === 0)) {
-      alert('세트 구성 약물의 이름, mg/kg, mg/mL을 모두 입력해주세요.');
+    if (items.some(it => !it.name || isNaN(it.dose)
+        || (needsConc(it.unit) && (isNaN(it.conc) || it.conc === 0)))) {
+      alert('세트 구성 약물의 이름과 용량(및 역가)을 모두 입력해주세요.');
       return;
     }
 
     drug = { name, combo: true, note, items };
   } else {
+    const unit = document.getElementById('formUnit').value || 'mg';
     const dose = parseFloat(document.getElementById('formDose').value);
-    const conc = parseFloat(document.getElementById('formConc').value);
+    const conc = needsConc(unit) ? parseFloat(document.getElementById('formConc').value) : 0;
     const sc = document.getElementById('formSC').checked;
 
-    if (isNaN(dose) || isNaN(conc) || conc === 0) {
-      alert('mg/kg, mg/mL을 입력해주세요.');
+    if (isNaN(dose) || (needsConc(unit) && (isNaN(conc) || conc === 0))) {
+      alert('용량(및 역가)을 입력해주세요.');
       return;
     }
 
-    drug = { name, dose, conc, sc, note };
+    drug = { name, dose, conc, unit, sc, note };
   }
 
   if (editingIdx >= 0) {
@@ -1048,7 +1155,9 @@ function cancelEdit() {
   document.getElementById('formNote').value = '';
   document.getElementById('formSC').checked = false;
   document.getElementById('formCombo').checked = false;
+  document.getElementById('formUnit').value = 'mg';
   document.getElementById('formTitle').textContent = '약물 추가';
+  syncUnitLabels();
   toggleComboForm();
 }
 
@@ -1062,18 +1171,22 @@ function editDrug(idx) {
 
   if (drug.combo) {
     formItems = drug.items.map(it => ({
-      name: it.name, dose: it.dose, conc: it.conc, sc: !!it.sc,
+      name: it.name, dose: it.dose, conc: it.conc,
+      unit: unitOf(it), sc: !!it.sc, note: it.note || '',
     }));
+    document.getElementById('formUnit').value = 'mg';
     document.getElementById('formDose').value = '';
     document.getElementById('formConc').value = '';
     document.getElementById('formSC').checked = false;
   } else {
     formItems = [];
+    document.getElementById('formUnit').value = unitOf(drug);
     document.getElementById('formDose').value = drug.dose;
     document.getElementById('formConc').value = drug.conc;
     document.getElementById('formSC').checked = !!drug.sc;
   }
 
+  syncUnitLabels();
   toggleComboForm();
   renderFormItems();
   document.getElementById('formTitle').textContent = drug.combo ? '세트 수정' : '약물 수정';
