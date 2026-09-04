@@ -565,11 +565,20 @@ const DEFAULT_DRUGS = [
       { name: "Ketamine", dose: 0.1, conc: 0, unit: "mL", sc: false, note: "" },
     ],
   },
+  {
+    name: "Rocuronium 전처치", combo: true, fixed: true, tab: "anes", note: "",
+    items: [
+      { name: "IV bolus loading", dose: 0.2, conc: 10, unit: "mg", sc: false,
+        note: "0.02 mL/kg" },
+      { name: "CRI", dose: 1, conc: 0, unit: "mLhr", sc: false,
+        note: "100 mL NS + rocuronium 2 mL" },
+    ],
+  },
 ];
 
 // DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
 // 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
-const DEFAULTS_VERSION = 5;
+const DEFAULTS_VERSION = 6;
 
 // unit / tab / fixed는 뒤늦게 도입된 속성이라 예전에 저장된 목록에는 없다.
 // 설정에서 저장한 약물은 이 속성들을 항상 명시적으로 기록하므로,
@@ -742,28 +751,34 @@ function matchesFilter(drug, lowerFilter) {
   return false;
 }
 
-// 용량 단위. mL는 체중당 부피를 직접 지정하므로 역가를 쓰지 않는다.
-// toMg는 역가(mg/mL, IU/mL)와 같은 단위로 맞추기 위한 환산 계수.
+// 용량 단위.
+//  conc   : 역가 표기. null이면 역가를 쓰지 않는다(체중당 부피를 직접 지정).
+//  toMg   : 역가와 단위를 맞추기 위한 환산 계수.
+//  result : 계산 결과의 단위. CRI는 부피가 아니라 시간당 속도라서 mL/hr로 나온다.
 const UNITS = {
-  mg: { dose: 'mg/kg', conc: 'mg/mL', amount: 'mg', toMg: 1 },
-  ug: { dose: 'µg/kg', conc: 'mg/mL', amount: 'µg', toMg: 0.001 },
-  IU: { dose: 'IU/kg', conc: 'IU/mL', amount: 'IU', toMg: 1 },
-  mL: { dose: 'mL/kg', conc: null, amount: null, toMg: null },
+  mg:   { dose: 'mg/kg',      conc: 'mg/mL', amount: 'mg', toMg: 1,     result: 'mL',    resultLabel: '투여량 (Volume)' },
+  ug:   { dose: 'µg/kg',      conc: 'mg/mL', amount: 'µg', toMg: 0.001, result: 'mL',    resultLabel: '투여량 (Volume)' },
+  IU:   { dose: 'IU/kg',      conc: 'IU/mL', amount: 'IU', toMg: 1,     result: 'mL',    resultLabel: '투여량 (Volume)' },
+  mL:   { dose: 'mL/kg',      conc: null,    amount: null, toMg: null,  result: 'mL',    resultLabel: '투여량 (Volume)' },
+  mLhr: { dose: 'mL/kg/hr',   conc: null,    amount: null, toMg: null,  result: 'mL/hr', resultLabel: '속도 (Rate)' },
 };
+
+// 역가를 쓰지 않는 단위 (체중에 바로 곱한다)
+const DIRECT_UNITS = ['mL', 'mLhr'];
 
 function unitOf(entry) { return UNITS[entry.unit] ? entry.unit : 'mg'; }
 
-// 투여 부피(mL)
+// mg/kg·µg/kg·IU/kg는 부피(mL), mL/kg는 부피(mL), mL/kg/hr는 속도(mL/hr)
 function calcVolume(entry, dose, weight) {
   const u = unitOf(entry);
-  if (u === 'mL') return dose * weight;
+  if (DIRECT_UNITS.includes(u)) return dose * weight;
   return (dose * UNITS[u].toMg * weight) / entry.conc;
 }
 
-// 총 투여량. mL/kg 지정은 질량으로 환산할 수 없어 null.
+// 총 투여량. 체중당 부피/속도 지정은 질량으로 환산할 수 없어 null.
 function calcAmount(entry, dose, weight) {
   const u = unitOf(entry);
-  return u === 'mL' ? null : dose * weight;
+  return DIRECT_UNITS.includes(u) ? null : dose * weight;
 }
 
 function doseRow(entry, dose, onchange, fixed) {
@@ -784,13 +799,14 @@ function doseRow(entry, dose, onchange, fixed) {
   `;
 }
 
-function resultRow(weight, volume, label) {
+function resultRow(entry, weight, value) {
+  const u = UNITS[unitOf(entry)];
   return `
     <div class="result-row">
-      <span class="result-label">${label}</span>
+      <span class="result-label">${u.resultLabel}</span>
       <div>
-        <span class="result-value">${weight > 0 ? volume.toFixed(2) : '-'}</span>
-        <span class="result-unit">mL</span>
+        <span class="result-value">${weight > 0 ? value.toFixed(2) : '-'}</span>
+        <span class="result-unit">${u.result}</span>
       </div>
     </div>
   `;
@@ -799,7 +815,7 @@ function resultRow(weight, volume, label) {
 function renderSingleDetail(drug, idx, weight) {
   const dose = drugDoses[idx] !== undefined ? drugDoses[idx] : drug.dose;
   return doseRow(drug, dose, `updateDose(${idx}, this.value)`, !!drug.fixed)
-    + resultRow(weight, calcVolume(drug, dose, weight), '투여량 (Volume)');
+    + resultRow(drug, weight, calcVolume(drug, dose, weight));
 }
 
 function renderComboDetail(drug, idx, weight) {
@@ -813,7 +829,7 @@ function renderComboDetail(drug, idx, weight) {
         </div>
         ${item.note ? '<div class="combo-item-note">' + escapeHtml(item.note) + '</div>' : ''}
         ${doseRow(item, dose, `updateComboDose(${idx}, ${i}, this.value)`, !!(drug.fixed || item.fixed))}
-        ${resultRow(weight, calcVolume(item, dose, weight), '투여량 (Volume)')}
+        ${resultRow(item, weight, calcVolume(item, dose, weight))}
       </div>
     `;
   }).join('');
@@ -895,7 +911,7 @@ function summaryBody(entry, dose, weight, wrapClass) {
       ${entry.note ? ' &middot; <span style="color:#d69e2e;">' + escapeHtml(entry.note) + '</span>' : ''}
     </div>
     <div class="summary-dose"${sub && entry.sc ? ' style="color:#c53030;"' : ''}>
-      ${weight > 0 ? volume.toFixed(2) : '-'} mL
+      ${weight > 0 ? volume.toFixed(2) : '-'} ${u.result}
       ${amount !== null ? `<span style="font-size:13px;color:#718096;font-weight:500;">
         (${weight > 0 ? amount.toFixed(2) + ' ' + u.amount : '-'})
       </span>` : ''}
