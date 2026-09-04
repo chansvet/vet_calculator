@@ -275,6 +275,20 @@
     padding: 2px 6px; border-radius: 4px; margin-left: 6px;
   }
 
+  .compact-result {
+    display: flex; align-items: baseline; gap: 5px;
+    margin-top: 6px;
+  }
+  .compact-label { font-size: 12px; color: #718096; font-weight: 500; }
+  .compact-value { font-size: 16px; font-weight: 800; color: #2b6cb0; }
+  .compact-unit { font-size: 12px; font-weight: 600; color: #718096; }
+
+  .recipe-row { align-items: flex-start; gap: 10px; }
+  .recipe-value {
+    font-size: 15px; font-weight: 700; color: #2b6cb0;
+    text-align: right; line-height: 1.4;
+  }
+
   .combo-item-note {
     font-size: 11px; color: #d69e2e; font-weight: 600; margin-top: 1px;
   }
@@ -358,6 +372,9 @@
     padding: 8px 0 0 12px;
     border-left: 2px solid #e9d8fd;
     margin-top: 8px;
+  }
+  .summary-recipe {
+    font-size: 13px; color: #2b6cb0; margin-top: 3px;
   }
   .summary-sub-name { font-size: 14px; font-weight: 600; color: #4a5568; }
   .summary-sub .summary-dose { font-size: 19px; }
@@ -515,7 +532,7 @@
 
 <script>
 // 배포할 때마다 올린다. 헤더에 표시되어 최신 버전을 받았는지 눈으로 확인할 수 있다.
-const BUILD = 10;
+const BUILD = 11;
 
 const DEFAULT_DRUGS = [
   { name: "Famotidine (모틴)", dose: 1, conc: 10, sc: false, note: "1 or 0.5 mg/kg" },
@@ -576,8 +593,8 @@ const DEFAULT_DRUGS = [
     items: [
       { name: "IV bolus loading", dose: 0.2, conc: 10, unit: "mg", sc: false,
         note: "0.02 mL/kg" },
-      { name: "CRI", dose: 1, conc: 0, unit: "mLhr", sc: false,
-        note: "100 mL NS + rocuronium 2 mL" },
+      { name: "CRI", dose: 1, conc: 0, unit: "mLhr", sc: false, note: "",
+        recipe: "100 mL NS + rocuronium 2 mL" },
       { name: "Pyridostigmine (길항제)", dose: 0.25, conc: 5, unit: "mg", sc: false, note: "" },
     ],
   },
@@ -585,7 +602,7 @@ const DEFAULT_DRUGS = [
 
 // DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
 // 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
-const DEFAULTS_VERSION = 7;
+const DEFAULTS_VERSION = 8;
 
 // unit / tab / fixed는 뒤늦게 도입된 속성이라 예전에 저장된 목록에는 없다.
 // 설정에서 저장한 약물은 이 속성들을 항상 명시적으로 기록하므로,
@@ -613,6 +630,15 @@ function backfillDefaults(list) {
       const have = new Set(d.items.map(it => it.name));
       def.items.forEach(it => {
         if (!have.has(it.name)) d.items.push(JSON.parse(JSON.stringify(it)));
+      });
+
+      // 제조법이 메모에서 별도 항목으로 분리됨. 아직 메모에 들어있으면 옮긴다.
+      const defByName = new Map(def.items.map(it => [it.name, it]));
+      d.items.forEach(it => {
+        const di = defByName.get(it.name);
+        if (!di || !di.recipe || it.recipe) return;
+        it.recipe = di.recipe;
+        if (it.note === di.recipe) it.note = '';
       });
     }
   });
@@ -828,6 +854,27 @@ function resultRow(entry, weight, value) {
   `;
 }
 
+// 제조법이 있는 항목은 제조법을 큰 박스에, 계산값은 그 위 한 줄로 보여준다.
+function compactResult(entry, weight, value) {
+  const u = UNITS[unitOf(entry)];
+  return `
+    <div class="compact-result">
+      <span class="compact-label">${u.resultLabel}</span>
+      <span class="compact-value">${weight > 0 ? value.toFixed(2) : '-'}</span>
+      <span class="compact-unit">${u.result}</span>
+    </div>
+  `;
+}
+
+function recipeRow(recipe) {
+  return `
+    <div class="result-row recipe-row">
+      <span class="result-label">제조법</span>
+      <span class="recipe-value">${escapeHtml(recipe)}</span>
+    </div>
+  `;
+}
+
 function renderSingleDetail(drug, idx, weight) {
   const dose = drugDoses[idx] !== undefined ? drugDoses[idx] : drug.dose;
   return doseRow(drug, dose, `updateDose(${idx}, this.value)`, !!drug.fixed)
@@ -844,8 +891,11 @@ function renderComboDetail(drug, idx, weight) {
           ${item.sc ? '<span class="sc-badge">SC</span>' : ''}
         </div>
         ${item.note ? '<div class="combo-item-note">' + escapeHtml(item.note) + '</div>' : ''}
+        ${item.recipe ? compactResult(item, weight, calcVolume(item, dose, weight)) : ''}
         ${doseRow(item, dose, `updateComboDose(${idx}, ${i}, this.value)`, !!(drug.fixed || item.fixed))}
-        ${resultRow(item, weight, calcVolume(item, dose, weight))}
+        ${item.recipe
+          ? recipeRow(item.recipe)
+          : resultRow(item, weight, calcVolume(item, dose, weight))}
       </div>
     `;
   }).join('');
@@ -926,6 +976,9 @@ function summaryBody(entry, dose, weight, wrapClass) {
       ${d} ${u.dose}${u.conc ? ' &middot; ' + entry.conc + ' ' + u.conc : ''}
       ${entry.note ? ' &middot; <span style="color:#d69e2e;">' + escapeHtml(entry.note) + '</span>' : ''}
     </div>
+    ${entry.recipe
+      ? '<div class="summary-recipe">제조법 · <b>' + escapeHtml(entry.recipe) + '</b></div>'
+      : ''}
     <div class="summary-dose"${sub && entry.sc ? ' style="color:#c53030;"' : ''}>
       ${weight > 0 ? volume.toFixed(2) : '-'} ${u.result}
       ${amount !== null ? `<span style="font-size:13px;color:#718096;font-weight:500;">
@@ -1102,6 +1155,7 @@ function syncFormItems() {
     dose: row.querySelector('.fi-dose').value,
     conc: row.querySelector('.fi-conc').value,
     note: row.querySelector('.fi-note').value,
+    recipe: row.querySelector('.fi-recipe').value,
     sc: row.querySelector('.fi-sc').checked,
   }));
 }
@@ -1133,6 +1187,11 @@ function renderFormItems() {
         <label>메모</label>
         <input type="text" class="fi-note" value="${escapeHtml(item.note ?? '')}" placeholder="(선택사항)">
       </div>
+      <div class="form-row">
+        <label>제조법</label>
+        <input type="text" class="fi-recipe" value="${escapeHtml(item.recipe ?? '')}"
+          placeholder="예: 100 mL NS + 약물 2 mL">
+      </div>
       <label class="sc-toggle">
         <input type="checkbox" class="fi-sc" ${item.sc ? 'checked' : ''}>
         SC 약물
@@ -1150,7 +1209,7 @@ function onItemUnitChange(i, unit) {
 
 function addFormItem() {
   syncFormItems();
-  formItems.push({ name: '', dose: '', conc: '', unit: 'mg', note: '', sc: false });
+  formItems.push({ name: '', dose: '', conc: '', unit: 'mg', note: '', recipe: '', sc: false });
   renderFormItems();
 }
 
@@ -1187,6 +1246,7 @@ function saveDrug() {
       unit: it.unit || 'mg',
       sc: !!it.sc,
       note: (it.note || '').trim(),
+      recipe: (it.recipe || '').trim(),
     }));
 
     if (items.length === 0) {
@@ -1260,7 +1320,7 @@ function editDrug(idx) {
   if (drug.combo) {
     formItems = drug.items.map(it => ({
       name: it.name, dose: it.dose, conc: it.conc,
-      unit: unitOf(it), sc: !!it.sc, note: it.note || '',
+      unit: unitOf(it), sc: !!it.sc, note: it.note || '', recipe: it.recipe || '',
     }));
     document.getElementById('formUnit').value = 'mg';
     document.getElementById('formDose').value = '';
