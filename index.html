@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>약물 용량 계산기</title>
@@ -457,7 +460,7 @@
 <div class="header">
   <div class="header-left">
     <h1>Vet Drug Calculator</h1>
-    <p>수의 약물 용량 계산기</p>
+    <p>수의 약물 용량 계산기 <span id="buildTag"></span></p>
   </div>
   <div class="header-actions">
     <button class="reset-btn" onclick="resetAll()">전체 초기화</button>
@@ -511,6 +514,9 @@
 </div>
 
 <script>
+// 배포할 때마다 올린다. 헤더에 표시되어 최신 버전을 받았는지 눈으로 확인할 수 있다.
+const BUILD = 10;
+
 const DEFAULT_DRUGS = [
   { name: "Famotidine (모틴)", dose: 1, conc: 10, sc: false, note: "1 or 0.5 mg/kg" },
   { name: "SAM (유니설암)", dose: 22, conc: 150, sc: false, note: "" },
@@ -1332,6 +1338,8 @@ document.getElementById('weightInput').addEventListener('input', () => {
 document.getElementById('searchInput').addEventListener('input', (e) => {
   renderDrugs(e.target.value);
 });
+
+document.getElementById('buildTag').textContent = 'v' + BUILD;
 
 renderDrugs();
 </script>
