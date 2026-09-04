@@ -572,13 +572,14 @@ const DEFAULT_DRUGS = [
         note: "0.02 mL/kg" },
       { name: "CRI", dose: 1, conc: 0, unit: "mLhr", sc: false,
         note: "100 mL NS + rocuronium 2 mL" },
+      { name: "Pyridostigmine (길항제)", dose: 0.25, conc: 5, unit: "mg", sc: false, note: "" },
     ],
   },
 ];
 
 // DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
 // 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
-const DEFAULTS_VERSION = 6;
+const DEFAULTS_VERSION = 7;
 
 // unit / tab / fixed는 뒤늦게 도입된 속성이라 예전에 저장된 목록에는 없다.
 // 설정에서 저장한 약물은 이 속성들을 항상 명시적으로 기록하므로,
@@ -598,6 +599,15 @@ function backfillDefaults(list) {
     });
     if (LEGACY_NOTES[d.name] !== undefined && d.note === LEGACY_NOTES[d.name]) {
       d.note = def.note;
+    }
+
+    // 기본 세트에 구성 약물이 추가된 경우, 저장된 세트에 없는 것만 이름 기준으로 덧붙인다.
+    // 기존 구성 약물은 사용자가 고쳤을 수 있으므로 건드리지 않는다.
+    if (d.combo && def.combo && Array.isArray(d.items)) {
+      const have = new Set(d.items.map(it => it.name));
+      def.items.forEach(it => {
+        if (!have.has(it.name)) d.items.push(JSON.parse(JSON.stringify(it)));
+      });
     }
   });
 }
