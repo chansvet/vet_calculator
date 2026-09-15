@@ -585,7 +585,7 @@
 
 <script>
 // 배포할 때마다 올린다. 헤더에 표시되어 최신 버전을 받았는지 눈으로 확인할 수 있다.
-const BUILD = 14;
+const BUILD = 15;
 
 const DEFAULT_DRUGS = [
   { name: "SAM (유니설암)", dose: 22, conc: 150, sc: false, note: "" },
@@ -602,6 +602,8 @@ const DEFAULT_DRUGS = [
   { name: "Tramadol", dose: 4, conc: 50, sc: false, note: "" },
   { name: "Tranexamic acid (트라넥삼산)", dose: 10, conc: 100, sc: false, note: "" },
   { name: "Dalteparin", dose: 150, conc: 2500, unit: "IU", sc: true, note: "" },
+  { name: "G-CSF (류코스팀)", dose: 5, conc: 0.25, unit: "ug", sc: true,
+    concentrationLabel: "150 µg/0.6 mL", note: "0.02 mL/kg" },
   { name: "Meloxicam", dose: 0.1, conc: 5, sc: false, note: "" },
   { name: "Meropenem", dose: 8.5, conc: 50, sc: false, note: "" },
   { name: "Medetomidine (도미토)", dose: 10, conc: 1, unit: "ug", sc: false,
@@ -657,12 +659,12 @@ const DEFAULT_DRUGS = [
 
 // DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
 // 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
-const DEFAULTS_VERSION = 10;
+const DEFAULTS_VERSION = 11;
 
 // unit / tab / fixed는 뒤늦게 도입된 속성이라 예전에 저장된 목록에는 없다.
 // 설정에서 저장한 약물은 이 속성들을 항상 명시적으로 기록하므로,
 // 속성이 아예 없다 = 사용자가 건드린 적 없다는 뜻이라 기본값을 채워도 안전하다.
-const BACKFILL_FIELDS = ['unit', 'tab', 'fixed'];
+const BACKFILL_FIELDS = ['unit', 'tab', 'fixed', 'concentrationLabel'];
 
 // 기본 메모가 바뀐 약물. 사용자가 안 고쳤을 때만 새 메모로 교체한다.
 const LEGACY_NOTES = { "Dalteparin": "단위는 mg가 아닌 IU" };
