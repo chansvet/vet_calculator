@@ -606,6 +606,7 @@ const DEFAULT_DRUGS = [
     concentrationLabel: "150 µg/0.6 mL", note: "0.02 mL/kg" },
   { name: "Meloxicam", dose: 0.1, conc: 5, sc: false, note: "" },
   { name: "Meropenem", dose: 8.5, conc: 50, sc: false, note: "" },
+  { name: "Furosemide", dose: null, conc: 10, sc: false, note: "" },
   { name: "Medetomidine (도미토)", dose: 10, conc: 1, unit: "ug", sc: false,
     tab: "anes", fixed: false, note: "5–20 µg/kg" },
   {
@@ -659,7 +660,7 @@ const DEFAULT_DRUGS = [
 
 // DEFAULT_DRUGS에 새 항목이 추가되면 이 숫자를 올린다.
 // 기존 사용자의 저장된 목록에 없는 기본 약물만 이름 기준으로 덧붙인다.
-const DEFAULTS_VERSION = 11;
+const DEFAULTS_VERSION = 12;
 
 // unit / tab / fixed는 뒤늦게 도입된 속성이라 예전에 저장된 목록에는 없다.
 // 설정에서 저장한 약물은 이 속성들을 항상 명시적으로 기록하므로,
